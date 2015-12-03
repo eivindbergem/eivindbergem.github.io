@@ -14,13 +14,14 @@ categories: libuv tutorial
 [libuv-docs]: http://docs.libuv.org/
 [libuv-tutorial-gh]: https://github.com/eivindbergem/libuv-tutorial
 [libuv-build-instructions]: https://github.com/libuv/libuv#build-instructions
+[hello-server]: https://github.com/eivindbergem/libuv-tutorial/blob/master/hello-world/server.c
 
 # Introduction
 [libuv][libuv] is the event library at the core of [Node.js][node.js]. It is written in [C][c-wikipedia] and provides a cross-platform abstraction on top of Epoll in Linux, kqueue in BSD, and IOCP in Windows. In addition in comes with a thread pool and a lot of built in functions to provide asynchronous filesystem operations, all using the same basic interface. For anyone who has ever tried to tackle asynchronous IO using select(), libuv is the answer to your prayers. libuv was initially an abstraction on top of [libev][libev] – which in turn is a bloat-free version of [libevent][libevent] – in order for Node.js to work on windows, as libev was unix only.
 
 The learning curve for getting into libuv can be quite steep. There is a quite comprehensive tutorial [here][libuv-an-introduction], but I found it to leave out a lot of the details making it a bit hard to follow. There is also a lot of information in the [official documentation][libuv-docs], but it requires that you have at least basic knowledge of libuv and works better as a reference manual.
 
-In this tutorial we'll be creating a very simple server that accepts connections and sends "Hello, World!" to each client before closing the connection.
+This tutorial describes a very simple server that accepts connections and sends "Hello, World!" to each client before closing the connection.
 
 # Code
 
@@ -44,7 +45,7 @@ $ nc localhost 1234
 
 This should print "Hello, World!" in your terminal.
 
-#### hello-world/server.c:
+#### [hello-world/server.c][hello-server]:
 {% highlight c %}
 #include <stdio.h>
 #include <stdlib.h>
@@ -154,9 +155,9 @@ uv_tcp_t server;
 uv_tcp_init(loop, &server);
 {% endhighlight %}
 
-Normally in UNIX when working with files or sockets, we're using file descriptors. In libuv, we use handles. In this case we're using the uv_tcp_t handle, which is an extension of the uv_stream_t handle. Libuv use a crude form of struct inheritance, so that if you cast a uv_tcp_t as a uv_stream_t, you can access it's members. You'll be doing this a lot when working with libuv, as you see from the code.
+Unix uses file descriptors for working with IO, libuv uses handles. For a TCP stream, use the uv_tcp_t handle, which is an extension of the uv_stream_t handle. Libuv use a crude form of struct inheritance, so that if you cast a uv_tcp_t as a uv_stream_t, you can access it's members. You'll be doing this a lot when working with libuv, as you see from the code.
 
-The handle is tied to a specific loop and can not be used with several loops. In this tutorial we're going to stick to working with one loop.
+The TCP handle is tied to the loop using uv_tcp_init().
 
 {% highlight c %}
 // Listen on socket, run new_connection() on every new connection
@@ -167,14 +168,14 @@ if (ret) {
 }
 {% endhighlight %}
 
-To listen for incoming connections, we run uv_listen() with the tcp handle we just created, casted as a uv_stream_t pointer, as uv_listen() works with all kinds of streams, not just TCP streams. We give it a backlog argument, just as with the normal listen(), and finally a callback. listen() is not a blocking call, so it's not really the listen()-call that is asynchronous. The callback is called when the socket connected to the server handle is ready for reading, which means that there is a new connection.
+To listen for incoming connections, uv_listen() is used with the server handle, casted as a uv_stream_t pointer, as uv_listen() works with all kinds of streams, not just TCP streams. It also takes a backlog argument, just as with the normal listen(), and a callback function pointer. listen() is not a blocking call, so it's not really the listen()-call that is asynchronous. The callback is called when the socket connected to the server handle is ready for reading, which means that there is a new connection.
 
 {% highlight c %}
 // Start the loop
 uv_run(loop, UV_RUN_DEFAULT);
 {% endhighlight %}
 
-uv_listen() doesn't call the callback by itself, the callback is called by the event loop. So to get things running, we start our loop. The second argument to uv_run() is the run mode. UV_RUN_DEFAULT means that the loop will run until there are no more active handles or requests.
+uv_listen() doesn't call the callback by itself, the callback is called by the event loop. So to get things running, start the loop. The second argument to uv_run() is the run mode. UV_RUN_DEFAULT means that the loop will run until there are no more active handles or requests.
 
 #### new_connection()
 
@@ -186,7 +187,7 @@ if (status < 0) {
 }
 {% endhighlight %}
 
-The error handling in libuv is similar to the normal C error handling using errno, except that the error codes is put directly into the status code. If status is less than 0, there's an error, and status is equal to ```-errno```, that is, errno negated. When we give this to ```uv_strerror()``` it returns a message similar to the one returned by ```strerror()```.
+The error handling in libuv is similar to the normal C error handling using errno, except that the error codes is put directly into the status code. If status is less than 0, there's an error, and status is equal to ```-errno```, that is, errno negated. ```uv_strerror()``` returns a message similar to the one returned by ```strerror()```.
 
 {% highlight c %}
 // Create handle for client
@@ -195,7 +196,7 @@ memset(client, 0, sizeof(*client));
 uv_tcp_init(server->loop, client);
 {% endhighlight %}
 
-For each client we need a handle. The loop can be accessed through the server handle.
+Each client connection needs a separate handle. The loop can be accessed through the server handle.
 
 {% highlight c %}
 // Create write request handle
@@ -210,6 +211,6 @@ uv_buf_t bufs[] = {uv_buf_init(s, (unsigned int)strlen(s))};
 uv_write((uv_write_t*)req, (uv_stream_t*)client, bufs, 1, on_write);
 {% endhighlight %}
 
-To make a write request we first have to create a request handle. We don't need to initialize this, that is taken care of inside uv_write(). uv_write() also takes an array of uv_buf_t structs, which has two members: base, a char pointer to a buffer, and len, an unsigned int with the length of the buffer. We use uv_buf_init() to create a uv_buf_t from our string literal.
+To make a write request, create a request handle. Ther's no need to initialize this, that is taken care of inside uv_write(). uv_write() also takes an array of uv_buf_t structs, which has two members: base, a char pointer to a buffer, and len, an unsigned int with the length of the buffer. Use uv_buf_init() to create a uv_buf_t from our string literal.
 
-You might notice that bufs[] is declared on the stack. This might seem odd because bufs[] may not be reachable by the time the write request is executed. The reason this works is because bufs[] is copied into a heap by uv_write(). Not sure why it's done in this way, but I'm guessing it's for a good reason. This means that you don't have to bother with freeing bufs[] afterwards. However, you do have to free what buf->base points to, if heap allocated. But in this program, since we're just using a string literal, we have one less free to do. The freeing, of the request handle and the buf->base, if applicable, should be done in the write callback.
+You might notice that bufs[] is declared on the stack. This might seem odd because bufs[] may not be reachable by the time the write request is executed. The reason this works is because bufs[] is copied into a heap by uv_write(). Not sure why it's done in this way, but I'm guessing it's for a good reason. This means that you don't have to bother with freeing bufs[] afterwards. However, you do have to free what buf->base points to, if heap allocated. But in this program, using a string literal, there's one less free to worry about. The freeing, of the request handle and the buf->base, if applicable, should be done in the write callback.
